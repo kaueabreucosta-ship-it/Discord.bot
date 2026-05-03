@@ -1,7 +1,7 @@
 import os
 import asyncio
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 
 import discord
 from discord.ext import commands
@@ -18,7 +18,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 app = Flask(__name__)
 
 canal_log = None
-loop = None
 
 
 @bot.event
@@ -28,13 +27,9 @@ async def on_ready():
     print(f"Bot online: {bot.user}")
 
 
-@bot.command()
-async def status(ctx):
-    await ctx.send("✅ Bot online e funcionando!")
-
-
 async def enviar_log(dados):
     if not canal_log:
+        print("Canal não encontrado!")
         return
 
     jogador = dados.get("jogador", "Desconhecido")
@@ -45,24 +40,23 @@ async def enviar_log(dados):
     tipo = dados.get("tipo", "")
     link = dados.get("link", "")
 
-    # Cor baseada no tipo
     if tipo == "entrou":
-        cor = 0x57F287  # Verde
+        cor = 0x57F287
         emoji = "🟢"
     elif tipo == "saiu":
-        cor = 0xED4245  # Vermelho
+        cor = 0xED4245
         emoji = "🔴"
     elif tipo == "convite":
-        cor = 0x5865F2  # Azul Discord
+        cor = 0x5865F2
         emoji = "📨"
     else:
-        cor = 0xFEE75C  # Amarelo
+        cor = 0xFEE75C
         emoji = "📩"
 
     embed = discord.Embed(
         title=f"{emoji} {mensagem}",
         color=cor,
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )
 
     embed.add_field(name="👤 Nick", value=f"{displayname} ({jogador})", inline=True)
@@ -91,8 +85,11 @@ def receber():
     if dados.get("secret") != API_SECRET:
         return jsonify({"erro": "Não autorizado"}), 403
 
-    if loop:
-        asyncio.run_coroutine_threadsafe(enviar_log(dados), loop)
+    fut = asyncio.run_coroutine_threadsafe(enviar_log(dados), bot.loop)
+    try:
+        fut.result(timeout=5)
+    except Exception as e:
+        print(f"Erro ao enviar: {e}")
 
     return jsonify({"status": "ok"}), 200
 
@@ -106,13 +103,14 @@ def rodar_flask():
     app.run(host="0.0.0.0", port=PORT)
 
 
-async def main():
-    global loop
-    loop = asyncio.get_event_loop()
+@bot.event
+async def on_ready():
+    global canal_log
+    canal_log = bot.get_channel(CANAL_LOG_ID)
+    print(f"Bot online: {bot.user}")
     t = threading.Thread(target=rodar_flask, daemon=True)
     t.start()
-    await bot.start(BOT_TOKEN)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    bot.run(BOT_TOKEN)
