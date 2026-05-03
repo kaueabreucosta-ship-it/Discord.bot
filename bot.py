@@ -2,16 +2,17 @@ import discord
 from discord.ext import commands
 from flask import Flask, request, jsonify
 import threading
-import os
 from datetime import datetime
 
+import os
+
 # ============================================================
-# CONFIGURAÇÕES — edite aqui antes de rodar
+# CONFIGURAÇÕES — lidas das variáveis de ambiente do Railway
 # ============================================================
-BOT_TOKEN = "SEU_TOKEN_AQUI"          # Token do seu bot Discord
-CANAL_LOG_ID = 123456789012345678      # ID do canal onde as mensagens aparecem
-API_SECRET = "minha_senha_secreta"     # Senha para proteger a API local
-API_PORT = 5000                        # Porta da API local
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+CANAL_LOG_ID = int(os.environ.get("CANAL_LOG_ID", 0))
+API_SECRET = os.environ.get("API_SECRET", "minha_senha_secreta")
+API_PORT = int(os.environ.get("PORT", 5000))
 # ============================================================
 
 intents = discord.Intents.default()
@@ -115,3 +116,4 @@ if __name__ == "__main__":
 
     # Roda o bot Discord
     bot.run(BOT_TOKEN)
+    
