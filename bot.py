@@ -1,73 +1,67 @@
-from datetime import datetime, timezone
 import discord
+from discord.ext import commands
+from flask import Flask, request, jsonify
+import asyncio
+import threading
+import os
+from datetime import datetime, timezone
 
+# ===================== CONFIG =====================
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CANAL_LOG_ID = int(os.getenv("CANAL_LOG_ID"))
+API_SECRET = os.getenv("API_SECRET")
+
+app = Flask(__name__)
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="!", intents=intents)
+canal_log = None
+
+# ===================== FLASK =====================
+@app.route('/log', methods=['POST'])
+def receber_log():
+    try:
+        dados = request.json
+        if not dados:
+            return jsonify({"status": "erro", "message": "Sem dados"}), 400
+
+        # Verificação simples de segurança
+        if API_SECRET and dados.get("secret") != API_SECRET:
+            return jsonify({"status": "não autorizado"}), 401
+
+        # Envia o log de forma assíncrona
+        asyncio.run_coroutine_threadsafe(enviar_log(dados), bot.loop)
+        return jsonify({"status": "sucesso"}), 200
+
+    except Exception as e:
+        print(f"Erro na rota /log: {e}")
+        return jsonify({"status": "erro"}), 500
+
+# ===================== FUNÇÃO DO EMBED =====================
 async def enviar_log(dados):
+    global canal_log
     if not canal_log:
-        print("Canal não encontrado!")
+        print("Canal não configurado!")
         return
 
-    # Extrai os dados
-    jogador = dados.get("jogador", "Desconhecido")
-    displayname = dados.get("displayname", jogador)
-    userid = dados.get("userid", "")
-    thumbnail = dados.get("thumbnail", "").strip()
-    mensagem = dados.get("mensagem", "")
-    tipo = dados.get("tipo", "")
-    link = dados.get("link", "")
+    # (Cole aqui a função enviar_log que eu te passei na mensagem anterior)
 
-    # Define cor e emoji conforme o tipo
-    if tipo == "entrou":
-        cor = 0x57F287
-        emoji = "🟢"
-    elif tipo == "saiu":
-        cor = 0xED4245
-        emoji = "🔴"
-    elif tipo == "convite":
-        cor = 0x5865F2
-        emoji = "📨"
-    else:
-        cor = 0xFEE75C
-        emoji = "📩"
+# ===================== INICIALIZAÇÃO =====================
+@bot.event
+async def on_ready():
+    global canal_log
+    canal_log = bot.get_channel(CANAL_LOG_ID)
+    print(f"✅ Bot online como {bot.user}")
+    print(f"📌 Canal de log configurado: {canal_log}")
 
-    embed = discord.Embed(
-        title=f"{emoji} {mensagem}",
-        color=cor,
-        timestamp=datetime.now(timezone.utc)
-    )
+# ===================== RODAR TUDO =====================
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
-    embed.add_field(name="👤 Nick", value=f"{displayname} ({jogador})", inline=True)
-    embed.add_field(name="🆔 UserID", value=str(userid), inline=True)
+if __name__ == "__main__":
+    # Inicia o Flask em uma thread separada
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
 
-    if link:
-        embed.add_field(
-            name="🔗 Link do Servidor",
-            value=f"[**Clique aqui para entrar**]({link})",
-            inline=False
-        )
-
-    # ====================== THUMBNAIL MELHORADA ======================
-    if thumbnail and thumbnail.startswith(("http://", "https://")):
-        # Verifica se tem extensão válida de imagem
-        extensoes_validas = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
-        
-        url_limpa = thumbnail.split('?')[0]  # remove query string
-        
-        if any(url_limpa.lower().endswith(ext) for ext in extensoes_validas):
-            try:
-                embed.set_thumbnail(url=thumbnail)
-                print(f"✅ Thumbnail aplicada: {thumbnail[:80]}...")
-            except Exception as e:
-                print(f"❌ Erro ao aplicar thumbnail: {e}")
-        else:
-            print(f"⚠️ Thumbnail rejeitada (sem extensão válida): {thumbnail[:100]}...")
-    else:
-        print("⚠️ Nenhuma thumbnail válida enviada.")
-    # ================================================================
-
-    embed.set_footer(text="Delta Executor Bot")
-
-    try:
-        await canal_log.send(embed=embed)
-        print(f"✅ Embed enviado com sucesso - Tipo: {tipo}")
-    except Exception as e:
-        print(f"❌ Erro ao enviar embed: {e}")
+    # Inicia o Discord Bot
+    bot.run(BOT_TOKEN)
