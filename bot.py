@@ -7,13 +7,11 @@ import discord
 from discord.ext import commands
 from flask import Flask, request, jsonify
 
-# Configurações via variáveis de ambiente (Railway)
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 CANAL_LOG_ID = int(os.environ.get("CANAL_LOG_ID", 0))
 API_SECRET = os.environ.get("API_SECRET", "secreta")
 PORT = int(os.environ.get("PORT", 5000))
 
-# Setup do bot
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -35,16 +33,54 @@ async def status(ctx):
     await ctx.send("✅ Bot online e funcionando!")
 
 
-async def enviar_log(jogador, mensagem):
-    if canal_log:
-        embed = discord.Embed(
-            title="📨 Delta Executor",
-            color=0x5865F2,
-            timestamp=datetime.utcnow()
+async def enviar_log(dados):
+    if not canal_log:
+        return
+
+    jogador = dados.get("jogador", "Desconhecido")
+    displayname = dados.get("displayname", jogador)
+    userid = dados.get("userid", "")
+    thumbnail = dados.get("thumbnail", "")
+    mensagem = dados.get("mensagem", "")
+    tipo = dados.get("tipo", "")
+    link = dados.get("link", "")
+
+    # Cor baseada no tipo
+    if tipo == "entrou":
+        cor = 0x57F287  # Verde
+        emoji = "🟢"
+    elif tipo == "saiu":
+        cor = 0xED4245  # Vermelho
+        emoji = "🔴"
+    elif tipo == "convite":
+        cor = 0x5865F2  # Azul Discord
+        emoji = "📨"
+    else:
+        cor = 0xFEE75C  # Amarelo
+        emoji = "📩"
+
+    embed = discord.Embed(
+        title=f"{emoji} {mensagem}",
+        color=cor,
+        timestamp=datetime.utcnow()
+    )
+
+    embed.add_field(name="👤 Nick", value=f"{displayname} ({jogador})", inline=True)
+    embed.add_field(name="🆔 UserID", value=str(userid), inline=True)
+
+    if link:
+        embed.add_field(
+            name="🔗 Link do Servidor",
+            value=f"[**Clique aqui para entrar**]({link})",
+            inline=False
         )
-        embed.add_field(name="👤 Jogador", value=jogador, inline=True)
-        embed.add_field(name="💬 Mensagem", value=mensagem, inline=False)
-        await canal_log.send(embed=embed)
+
+    if thumbnail:
+        embed.set_thumbnail(url=thumbnail)
+
+    embed.set_footer(text="Delta Executor Bot")
+
+    await canal_log.send(embed=embed)
 
 
 @app.route("/executor", methods=["POST"])
@@ -55,11 +91,8 @@ def receber():
     if dados.get("secret") != API_SECRET:
         return jsonify({"erro": "Não autorizado"}), 403
 
-    jogador = dados.get("jogador", "Desconhecido")
-    mensagem = dados.get("mensagem", "")
-
     if loop:
-        asyncio.run_coroutine_threadsafe(enviar_log(jogador, mensagem), loop)
+        asyncio.run_coroutine_threadsafe(enviar_log(dados), loop)
 
     return jsonify({"status": "ok"}), 200
 
@@ -83,4 +116,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
