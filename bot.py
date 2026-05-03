@@ -1,45 +1,21 @@
-import os
-import asyncio
-import threading
 from datetime import datetime, timezone
-
 import discord
-from discord.ext import commands
-from flask import Flask, request, jsonify
-
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-CANAL_LOG_ID = int(os.environ.get("CANAL_LOG_ID", 0))
-API_SECRET = os.environ.get("API_SECRET", "secreta")
-PORT = int(os.environ.get("PORT", 5000))
-
-intents = discord.Intents.default()
-intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
-app = Flask(__name__)
-
-canal_log = None
-
-
-@bot.event
-async def on_ready():
-    global canal_log
-    canal_log = bot.get_channel(CANAL_LOG_ID)
-    print(f"Bot online: {bot.user}")
-
 
 async def enviar_log(dados):
     if not canal_log:
         print("Canal não encontrado!")
         return
 
+    # Extrai os dados
     jogador = dados.get("jogador", "Desconhecido")
     displayname = dados.get("displayname", jogador)
     userid = dados.get("userid", "")
-    thumbnail = dados.get("thumbnail", "")
+    thumbnail = dados.get("thumbnail", "").strip()
     mensagem = dados.get("mensagem", "")
     tipo = dados.get("tipo", "")
     link = dados.get("link", "")
 
+    # Define cor e emoji conforme o tipo
     if tipo == "entrou":
         cor = 0x57F287
         emoji = "🟢"
@@ -69,48 +45,29 @@ async def enviar_log(dados):
             inline=False
         )
 
-    if thumbnail:
-        embed.set_thumbnail(url=thumbnail)
+    # ====================== THUMBNAIL MELHORADA ======================
+    if thumbnail and thumbnail.startswith(("http://", "https://")):
+        # Verifica se tem extensão válida de imagem
+        extensoes_validas = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+        
+        url_limpa = thumbnail.split('?')[0]  # remove query string
+        
+        if any(url_limpa.lower().endswith(ext) for ext in extensoes_validas):
+            try:
+                embed.set_thumbnail(url=thumbnail)
+                print(f"✅ Thumbnail aplicada: {thumbnail[:80]}...")
+            except Exception as e:
+                print(f"❌ Erro ao aplicar thumbnail: {e}")
+        else:
+            print(f"⚠️ Thumbnail rejeitada (sem extensão válida): {thumbnail[:100]}...")
+    else:
+        print("⚠️ Nenhuma thumbnail válida enviada.")
+    # ================================================================
 
     embed.set_footer(text="Delta Executor Bot")
 
-    await canal_log.send(embed=embed)
-
-
-@app.route("/executor", methods=["POST"])
-def receber():
-    dados = request.get_json(silent=True)
-    if not dados:
-        return jsonify({"erro": "JSON inválido"}), 400
-    if dados.get("secret") != API_SECRET:
-        return jsonify({"erro": "Não autorizado"}), 403
-
-    fut = asyncio.run_coroutine_threadsafe(enviar_log(dados), bot.loop)
     try:
-        fut.result(timeout=5)
+        await canal_log.send(embed=embed)
+        print(f"✅ Embed enviado com sucesso - Tipo: {tipo}")
     except Exception as e:
-        print(f"Erro ao enviar: {e}")
-
-    return jsonify({"status": "ok"}), 200
-
-
-@app.route("/ping")
-def ping():
-    return jsonify({"status": "online"}), 200
-
-
-def rodar_flask():
-    app.run(host="0.0.0.0", port=PORT)
-
-
-@bot.event
-async def on_ready():
-    global canal_log
-    canal_log = bot.get_channel(CANAL_LOG_ID)
-    print(f"Bot online: {bot.user}")
-    t = threading.Thread(target=rodar_flask, daemon=True)
-    t.start()
-
-
-if __name__ == "__main__":
-    bot.run(BOT_TOKEN)
+        print(f"❌ Erro ao enviar embed: {e}")
